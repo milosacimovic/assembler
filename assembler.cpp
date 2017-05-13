@@ -9,11 +9,6 @@
 
 #include "assembler.h"
 
-const uint8_t MAX_ARGS = 3;
-const uint16_t BUF_SIZE = 1024;
-const char* IGNORE_CHARS = " ,\f\n\v\r";
-const int NUM_BUCKETS = 54;
-
 using namespace std;
 
 void name_already_exists(const char* name){
