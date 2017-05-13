@@ -129,7 +129,7 @@ void write_table(vector<vector<Symbol*>>& symtbl, FILE* file){
     }
 }
 
-void create_rel_tables(vector<RelTable*>& rels, vector<vector<Symbol*>> symtbl){
+void create_rel_tables(vector<RelTable*>& rels, vector<vector<Symbol*>>& symtbl){
     int num_sec = symtbl[NUM_BUCKETS - 1].size();
     int secs = NUM_BUCKETS - 1;
     for(int i = 0; i < num_sec; i++){
@@ -148,12 +148,12 @@ void create_rel_tables(vector<RelTable*>& rels, vector<vector<Symbol*>> symtbl){
     }
 }
 
-void add_rel_symbol(RelTable* table, uint32_t addr, char type, uint32_t sym_num){
+void add_rel_symbol(RelTable& table, uint32_t addr, char type, uint32_t sym_num){
     RelSymbol* sym = new (nothrow) RelSymbol(addr, type, sym_num);
     if(sym == NULL){
         alloc_fail();
     }
-    table->tbl.push_back(sym);
+    table.tbl.push_back(sym);
 }
 
 void free_rel_tables(vector<RelTable*>& rels){

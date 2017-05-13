@@ -52,7 +52,7 @@ int add_to_table(std::vector<std::vector<Symbol*>>& symtbl, const char* name, ui
 
 uint32_t get_symbol_addr(std::vector<std::vector<Symbol*>>& symtbl, const char* name);
 
-Symbol* get_symbol(std::vector<std::vector<Symbol*>> symtbl, const char* name);
+Symbol* get_symbol(std::vector<std::vector<Symbol*>>& symtbl, const char* name);
 
 void free_table(std::vector<std::vector<Symbol*>>& symtbl);
 

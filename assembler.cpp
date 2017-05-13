@@ -133,7 +133,7 @@ bool pass_one(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl){
                 fprintf(output, "%s", name);
                 return error;
             }
-            translate_directive_pass_one(name, buf, output, symtbl, prev_name);           
+            translate_directive_pass_one(name, buf, output, symtbl, location_counter, prev_name);           
             
         }else{//it is an instruction mnemonic or a def directive
             cur = strtok(NULL, IGNORE_CHARS);

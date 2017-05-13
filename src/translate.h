@@ -16,9 +16,9 @@ void write_pass_one(FILE* output, const char* name, char** args, uint8_t num_arg
 
 void def_directive(char* buf, std::vector<std::vector<Symbol*>>& symtbl);
 
-void translate_directive_pass_one(const char* name, const char* buf, FILE* output, std::vector<std::vector<Symbol*>>& symtbl, const char* prev_name);
+void translate_directive_pass_one(const char* name, char* buf, FILE* output, std::vector<std::vector<Symbol*>>& symtbl,uint32_t& location_counter, const char* prev_name);
 
-void translate_directive_pass_two(const char* name, const char* buf, std::vector<std::vector<Symbol*>>& symtbl, std::vector<RelTable*>& reltbls, uint32_t& location_counter, int& rel_ind);
+void translate_directive_pass_two(const char* name, char* buf, std::vector<std::vector<Symbol*>>& symtbl, std::vector<RelTable*>& reltbls, uint32_t& location_counter, int& rel_ind);
 
 void location_counter_update(char** args, int num_args, uint32_t& location_counter);
 
