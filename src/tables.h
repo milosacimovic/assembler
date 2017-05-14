@@ -9,6 +9,7 @@ extern const uint16_t BUF_SIZE;
 extern const char* IGNORE_CHARS;
 extern const int NUM_BUCKETS;
 
+
 /* Signature of the SymbolTable data structure. */
 
 typedef struct Symbol{
@@ -20,7 +21,7 @@ typedef struct Symbol{
     char flag; /*'G' for global and 'L' for local*/
     uint32_t sec_size;
     std::vector<char> flags; /*sec flags W- writeable A - allocatable X - executable P - present */
-    Symbol(char* n, uint32_t address): num(0), name(n), sec_num(0), addr(address), flag('L'), sec_size(0), flags(3){}
+    Symbol(char* n, uint32_t address): num(0), name(n), sec_num(0), addr(address), flag('L'), sec_size(0), flags(0){}
 } Symbol;
 
 /* Signature of the RelTable data structure. */
@@ -43,7 +44,7 @@ typedef struct RelTable{
                             which, of course, referes to one section
                             the table will be written to the object file
                             followed by its section content*/
-    RelTable():ind(0), section_content(NULL), tbl(5){}
+    RelTable():ind(0), section_content(NULL), tbl(0){}
 }RelTable;
 
 int char_to_ind(char c);

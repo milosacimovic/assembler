@@ -15,83 +15,249 @@ void write_pass_one(FILE* output, const char* name, char** args, uint8_t num_arg
     write_inst_string(output, name, args, num_args);
 }
 
-//Need to make relocation table entries here also TODO!!!!
-//And change what is being written to the section_content
-//have to change the logic because the expression can contain
-//maybe du strstr
-void data_pass_two(const char* name, char* buf, vector<RelTable*>& reltbls, uint32_t& location_counter, int& rel_ind){
+
+int32_t calculate_data_expression(char* arg, int32_t tmp, bool& ret, uint32_t& sym_num, vector<vector<Symbol*>>& symtbl, int32_t& sub_res) {
+	char* out = strdup(arg);
+	int i = 0; //operand counter
+	int str_ind = 0;
+	bool cur_operand = false; //boolean
+	char* str = arg;
+	char literal[35];
+	int literal_ind = 0;
+	vector<int32_t> literals;
+
+	vector<Symbol*> sub_literals;
+	char* sub_str = strdup(arg);
+	int j = 0;
+	int sub_str_ind = 0;
+	char c;
+	while (*str) {
+		c = *str;
+		if (str_contains("+-*/()", c)) {
+			if (cur_operand) {
+				cur_operand = false;
+				//exchange literal with a letter
+				char ins = ind_to_c(i++);
+				out[str_ind++] = ins;
+				literal[literal_ind] = '\0';
+				if (is_valid_label(literal)) {
+					Symbol* sym = get_symbol(symtbl, literal);
+					/*  Need to check if the expression is correct
+					so what I'll do is make a subexpression
+					consisting only of the 1s and 0s
+					1s for valid labels and 0s for absolute labels
+					if the sub expression resolves to 1 or 0
+					with the condition that subtraction is done on symbols
+					with sam sec_num then the expression is correct
+					otherwise it is not and return false
+					sym_num needs to be from the symbol whose 1 is the result
+					of the subexpression
+					*/
+					char sub_ins = ind_to_c(j++);
+					sub_str[sub_str_ind++] = sub_ins;
+					if (c == '+' || c == '-') {
+						sub_str[sub_str_ind++] = c;
+					}
+					if (sym == NULL) {//must be an external symbol
+									  //exchange it with 0
+						add_to_table(symtbl, literal, 0, &sym);
+						literals.push_back(0);
+					}
+					else {
+						int32_t off = tmp;
+
+						if (sym->flag == 'L') {
+							off += sym->addr;
+						}
+						literals.push_back(off);
+					}
+					sub_literals.push_back(sym);
+				}
+				else {
+					literals.push_back(convert_to_num(literal));
+				}
+			}
+			out[str_ind++] = c;
+		}
+		else {
+			if (!cur_operand) {
+				cur_operand = true;
+				literal_ind = 0;
+			}
+			literal[literal_ind++] = c;
+		}
+		str++;
+	}
+	if (cur_operand) {
+		//exchange literal with a letter
+		char ins = ind_to_c(i++);
+		out[str_ind++] = ins;
+		literal[literal_ind] = '\0';
+		if (is_valid_label(literal)) {
+			Symbol* sym = get_symbol(symtbl, literal);
+			char sub_ins = ind_to_c(j++);
+			sub_str[sub_str_ind++] = sub_ins;
+			if (c == '+' || c == '-') {
+				sub_str[sub_str_ind++] = c;
+			}
+			if (sym == NULL) {//must be an external symbol
+							  //exchange it with 0
+				add_to_table(symtbl, literal, 0, &sym);
+				literals.push_back(0);
+			}
+			else {
+				int32_t off = tmp;
+
+				if (sym->flag == 'L' || (sym->flag == 'G' && sym->sec_num == -1)) {
+					off += sym->addr;
+				}
+				literals.push_back(off);
+			}
+			sub_literals.push_back(sym);
+		}
+		else {
+			literals.push_back(convert_to_num(literal));
+		}
+	}
+	out[str_ind++] = '\0';
+	sub_str[sub_str_ind++] = '\0';
+	//check if the subexpression is valid
+	char* sub_ex = to_postfix(sub_str);
+	bool err;
+	sub_res = check_sub(sub_ex, sub_literals, err, sym_num);
+	if (err) {
+		ret = true;
+		return 0;
+	}
+	if (sub_res == 1) {
+		ret = false;
+	}
+	else if (sub_res == 0) {
+		ret = false;
+	}
+	else {
+		ret = true;
+		return 0;
+	}
+	
+	char* ex = to_postfix(out);
+	return eval_postfix(ex, literals);
+}
+
+//PAY ATTENTION little endian
+void data_pass_two(const char* name, char* buf, vector<RelTable*>& reltbls, uint32_t& location_counter, int& rel_ind, vector<vector<Symbol*>>& symtbl){
     char* cur = strtok(buf, IGNORE_CHARS);
     cur = strtok(NULL, IGNORE_CHARS);// cur = const_expr
-    //TODO!!!!!!!!!!!!!!!!!!!
-    int res = calculate_expression(cur);
-    //PAY ATTENTION : little-endian lower bytes first
+	int32_t sub_res;
+	uint32_t sym_num;
+    int res;
+	bool ret;
     char str[9];
-    char *lstr = to_lower(buf);
-    sprintf(str, "%08x", res);
-    if(strstr(lstr, "dup")){
+    
+    if(strstr(buf, "DUP")){
+		// what if there is a following example dup DD dup label named dup ????
         // if dup or DUP is in the string then this points to
+		res = calculate_expression(cur);
         int num_rept = res;
         switch(name[1]){
             case 'b':
-                location_counter+=1*num_rept;
+				location_counter += num_rept;
                 break;
             case 'w':
-                location_counter+=2*num_rept;
-                break;
-            case 'd':
-                location_counter+=4*num_rept;
+                location_counter += 2*num_rept;
                 break;
         }
         if(!str_contains(buf, '?')){
-            cur = strtok(buf+2, "dup");
-            cur = strtok(NULL, "dup");
+            cur = strtok(buf+2, "DUP");
+            cur = strtok(NULL, "DUP"); //cur = const_expr that is repeated
             if(cur == NULL){
                 write_to_log("Error: %s expected an expression", name);
             }else{
-                //TODO!!!!!!!!!!!!!!!!!!!!!
-                int res = calculate_expression(cur);
-                uint8_t first = (uint8_t)strtol(str + 6,NULL,16);
-                str[6] = '\0';
-                uint8_t second = (uint8_t)strtol(str + 4,NULL,16);
-                str[4] = '\0';
-                uint8_t third = (uint8_t)strtol(str + 2,NULL,16);
-                str[2] = '\0';
-                uint8_t fourth = (uint8_t)strtol(str,NULL,16);
-                for(int i = 0; i < num_rept; i++){
-                    int ind = reltbls[rel_ind]->ind;
-                    switch(name[1]){
-                        case 'b':
-                            reltbls[rel_ind]->section_content[ind++] = first;
-                            break;
-                        case 'w':
-                            reltbls[rel_ind]->section_content[ind++] = first;
-                            reltbls[rel_ind]->section_content[ind++] = second;
-                            break;
-                        case 'd':
-                            reltbls[rel_ind]->section_content[ind++] = first;
-                            reltbls[rel_ind]->section_content[ind++] = second;
-                            reltbls[rel_ind]->section_content[ind++] = third;
-                            reltbls[rel_ind]->section_content[ind++] = fourth;
-                            break;
-                    }
-                    reltbls[rel_ind]->ind = ind;
+                
+				uint8_t first;
+				uint8_t second;
+				uint8_t third = (uint8_t)strtol(str + 2, NULL, 16);
+				str[2] = '\0';
+				uint8_t fourth = (uint8_t)strtol(str, NULL, 16);
+				int ind = reltbls[rel_ind]->ind;
+                switch(name[1]){
+                    case 'b':
+						res = calculate_expression(cur);
+						sprintf(str, "%08x", res);
+						first = (uint8_t)strtol(str + 6, NULL, 16);
+						for (int i = 0; i < num_rept; i++) {
+							reltbls[rel_ind]->section_content[ind++] = first;
+						}
+                        break;
+                    case 'w':
+						res = calculate_expression(cur);
+						sprintf(str, "%08x", res);
+						first = (uint8_t)strtol(str + 6, NULL, 16);
+						str[6] = '\0';
+						second = (uint8_t)strtol(str + 4, NULL, 16);
+						for (int i = 0; i < num_rept; i++) {
+							reltbls[rel_ind]->section_content[ind++] = (uint8_t)strtol(str + 6, NULL, 16);
+							str[6] = '\0';
+							reltbls[rel_ind]->section_content[ind++] = (uint8_t)strtol(str + 4, NULL, 16);
+						}
+                        break;
+                    case 'd':
+
+						//calculate data expression and if needed make a relocation table entry
+						res = calculate_data_expression(cur, 0, ret, sym_num, symtbl, sub_res);
+						if (ret) {
+							return;
+						}
+						sprintf(str, "%08x", res);
+						first = (uint8_t)strtol(str + 6, NULL, 16);
+						str[6] = '\0';
+						second = (uint8_t)strtol(str + 4, NULL, 16);
+						str[4] = '\0';
+						third = (uint8_t)strtol(str + 2, NULL, 16);
+						str[2] = '\0';
+						fourth = (uint8_t)strtol(str, NULL, 16);
+						for (int i = 0; i < num_rept; i++) {
+							if (sub_res == 1) {
+								add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+							}
+							reltbls[rel_ind]->section_content[ind++] = first;
+							reltbls[rel_ind]->section_content[ind++] = second;
+							reltbls[rel_ind]->section_content[ind++] = third;
+							reltbls[rel_ind]->section_content[ind++] = fourth;
+							location_counter += 4;
+						}
+                        break;
                 }
+				reltbls[rel_ind]->ind = ind;
             }
         }
     }else{
+		
         int ind = reltbls[rel_ind]->ind;
         switch(name[1]){
             case 'b':
+				res = calculate_expression(cur);
+				sprintf(str, "%08x", res);
                 reltbls[rel_ind]->section_content[ind++] = (uint8_t)strtol(str + 6,NULL,16);
                 location_counter+=1;
                 break;
             case 'w':
+				res = calculate_expression(cur);
+				sprintf(str, "%08x", res);
                 reltbls[rel_ind]->section_content[ind++] = (uint8_t)strtol(str + 6,NULL,16);
                 str[6] = '\0';
                 reltbls[rel_ind]->section_content[ind++] = (uint8_t)strtol(str + 4,NULL,16);
                 location_counter+=2;
                 break;
             case 'd':
+				res = calculate_data_expression(cur, 0, ret, sym_num, symtbl, sub_res);
+				if (ret) {
+					return;
+				}
+				if (sub_res == 1) {
+					add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+				}
+				sprintf(str, "%08x", res);
                 reltbls[rel_ind]->section_content[ind++] = (uint8_t)strtol(str + 6,NULL,16);
                 str[6] = '\0';
                 reltbls[rel_ind]->section_content[ind++] = (uint8_t)strtol(str + 4,NULL,16);
@@ -131,14 +297,16 @@ void global_directive(char* buf, vector<vector<Symbol*>>& symtbl, uint32_t& loca
 void section_directive(const char* sec, vector<vector<Symbol*>>& symtbl, uint32_t& location_counter, const char* prev_name){
     char* str = strdup(sec);
     char* p = strrchr(str, '.');
-    if(p){
+    if(p && p != str){
         *p = '\0';
     }
     Symbol* sym;
     if(add_to_table(symtbl, str, location_counter, &sym) == 0){
-        if(strcmp(prev_name, "org")==0){
-            sym->addr = org_expr;
-        }
+		if (prev_name != NULL) {
+			if (strcmp(prev_name, "org") == 0) {
+				sym->addr = org_expr;
+			}
+		}
 
         int num_secs = symtbl[NUM_BUCKETS - 1].size();
         if(num_secs - 2 >= 0){
@@ -148,28 +316,29 @@ void section_directive(const char* sec, vector<vector<Symbol*>>& symtbl, uint32_
         sym->num = symtbl[NUM_BUCKETS - 1].size();
         sym->sec_num = sym->num;
         
-
-        if(strcmp(prev_name, "org")==0){
-            sym->addr = org_expr;
-            location_counter = org_expr;
-        }else{
-            location_counter = 0;
-        }
+		if (prev_name != NULL) {
+			if (strcmp(prev_name, "org") == 0) {
+				sym->addr = org_expr;
+				location_counter = org_expr;
+			}
+			else {
+				location_counter = 0;
+			}
+		}
+		else {
+			location_counter = 0;
+		}
         
         if(strcmp(str, ".text") == 0){
             sym->flags.push_back('X');
-            sym->flags.push_back('P');
+			sym->flags.push_back('P');
         } 
-        else if(strcmp(str, ".data") == 0){
-            sym->flags.push_back('W');
-            sym->flags.push_back('P'); 
-        }
-        else if(strcmp(str, ".bss") == 0){ 
-            sym->flags.push_back('W');
-            sym->flags.push_back('P');
+        else if(strcmp(str, ".data") == 0 || strcmp(str, ".bss") == 0){
+			sym->flags.push_back('W');
+			sym->flags.push_back('P');
         }
         else if(strcmp(str, ".rodata") == 0){
-            sym->flags.push_back('P');
+			sym->flags.push_back('P');
         }
     }
 }
@@ -232,9 +401,12 @@ int addressing_mode(char* str){
         default:
             if(str_contains(str, '+') || str_contains(str, '-') || str_contains(str, '*') || str_contains(str, '/')){
                 ret = 6;
-            }else{
-                ret = 0;
-            }
+            }else if(translate_reg(str) == -1){
+                ret = 6;
+			}
+			else {
+				ret = 0;
+			}
             break;
         
     }
@@ -258,35 +430,52 @@ void location_counter_update(char** args, int num_args, uint32_t& location_count
                 two = 1;
         }
     }
-    if(two){
-        location_counter+=8;
-    }else{
-        location_counter+=4;
-    }
+	if (two) {
+		location_counter += 8;
+	}
+	else {
+		location_counter += 4;
+	}
     
+    
+}
+
+void write_wout_label(char* buf, FILE* output) {
+	char* cur = strdup(buf);
+	char* start = strtok(cur, IGNORE_CHARS);
+	size_t len = strlen(start);
+	if (start[len - 1] != ':') {
+		fprintf(output, buf);
+	}
+	else {
+		cur = strtok(NULL, IGNORE_CHARS);
+		fprintf(output, buf + (cur-start));
+	}
 }
 
 void translate_directive_pass_one(const char* name, char* buf, FILE* output, vector<vector<Symbol*>>& symtbl, uint32_t& location_counter, const char* prev_name){
     char* str = strdup(name);
-    char* p = strrchr(str, '.');
-    if(p){
+	skip_comment(buf);
+	char* p = strrchr(str, '.');
+    if(p && p != str){
         *p = '\0';
     }
     if(strcmp(str, ".global") == 0){ global_directive(buf, symtbl, location_counter);}
-    else if(strcmp(str, ".text") == 0){ section_directive(name, symtbl, location_counter, prev_name); fprintf(output,name); } 
-    else if(strcmp(str, ".data") == 0){ section_directive(name, symtbl, location_counter, prev_name); fprintf(output,name); }
-    else if(strcmp(str, ".bss") == 0){ section_directive(name, symtbl, location_counter, prev_name); fprintf(output,name); }
-    else if(strcmp(str, ".rodata") == 0){ section_directive(name, symtbl, location_counter, prev_name); fprintf(output,name); }
+    else if(strcmp(str, ".text") == 0){ section_directive(name, symtbl, location_counter, prev_name); fprintf(output,buf); } 
+    else if(strcmp(str, ".data") == 0){ section_directive(name, symtbl, location_counter, prev_name); fprintf(output,buf); }
+    else if(strcmp(str, ".bss") == 0){ section_directive(name, symtbl, location_counter, prev_name); fprintf(output,buf); }
+    else if(strcmp(str, ".rodata") == 0){ section_directive(name, symtbl, location_counter, prev_name); fprintf(output,buf); }
     else if(strcmp(str, "org") == 0){ org_directive(buf);} 
-    else if(strcmp(str, "db") == 0){ data_directive(name, location_counter); fprintf(output,buf); }
-    else if(strcmp(str, "dw") == 0){ data_directive(name, location_counter); fprintf(output,buf); }
-    else if(strcmp(str, "dd") == 0){ data_directive(name, location_counter); fprintf(output,buf); }
+	else if (strcmp(str, "db") == 0) { data_directive(name, location_counter); write_wout_label(buf, output);}
+    else if(strcmp(str, "dw") == 0){ data_directive(name, location_counter); write_wout_label(buf, output);}
+    else if(strcmp(str, "dd") == 0){ data_directive(name, location_counter); write_wout_label(buf, output);}
+	free(str);
 }
 void translate_directive_pass_two(const char* name, char* buf, vector<vector<Symbol*>>& symtbl, vector<RelTable*>& reltbls, uint32_t& location_counter, int& rel_ind){
     if(name[0] == '.'){rel_ind++; Symbol* sym = get_symbol(symtbl, name); location_counter = sym->addr;}
-    else if(strcmp(name, "db") == 0){data_pass_two(name, buf, reltbls, location_counter, rel_ind);}
-    else if(strcmp(name, "dw") == 0 ){data_pass_two(name, buf, reltbls, location_counter, rel_ind);}
-    else if(strcmp(name, "dd") == 0){data_pass_two(name, buf, reltbls, location_counter, rel_ind);}
+    else if(strcmp(name, "db") == 0){data_pass_two(name, buf, reltbls, location_counter, rel_ind, symtbl);}
+    else if(strcmp(name, "dw") == 0 ){data_pass_two(name, buf, reltbls, location_counter, rel_ind, symtbl);}
+    else if(strcmp(name, "dd") == 0){data_pass_two(name, buf, reltbls, location_counter, rel_ind, symtbl);}
 }
 
 int translate_inst(const char* name, char** args, int num_args, vector<vector<Symbol*>>& symtbl, vector<RelTable*>& reltbls, int rel_ind, uint32_t& location_counter){
@@ -411,11 +600,26 @@ void remove_brackets(char* source){
 int32_t check_sub(char* expr, vector<Symbol*>& symbols, bool& ret, uint32_t& sym_num){
     stack<Symbol*> s;
     Symbol* res;
+	ret = false;
     char op;
+	if (strlen(expr) == 1) {
+		Symbol* sym = symbols[c_to_ind(expr[0])];
+		if (sym->sec_num == -1) {
+			return 0;
+		}
+		else {
+			if (sym->flag == 'G') {
+				sym_num = sym->num;
+			}
+			else {
+				sym_num = sym->sec_num;
+			}
+		}
+		return 1;
+	}
     while(*expr != NULL){
         char x = *expr;
         if(is_operand(x)){
-            char x;
             s.push(symbols[c_to_ind(x)]);
         }else if(is_operator(x)){
             Symbol* sym2 = s.top();
@@ -428,7 +632,12 @@ int32_t check_sub(char* expr, vector<Symbol*>& symbols, bool& ret, uint32_t& sym
                 oper2 = 0;
             }else if(sym2->sec_num > 0){
                 oper2 = 1;
-                sym_num = sym2->num;
+				if (sym2->flag == 'G') {
+					sym_num = sym2->num;
+				}
+				else {
+					sym_num = sym2->sec_num;
+				}
             }else{
                 oper2 = sym2->addr;
             }
@@ -436,7 +645,12 @@ int32_t check_sub(char* expr, vector<Symbol*>& symbols, bool& ret, uint32_t& sym
                 oper1 = 0;
             }else if (sym1->sec_num > 0){
                 oper1 = 1;
-                sym_num = sym2->num;
+				if (sym1->flag == 'G') {
+					sym_num = sym1->num;
+				}
+				else {
+					sym_num = sym1->sec_num;
+				}
             }else{
                 oper1 = sym1->addr;
             }
@@ -450,7 +664,7 @@ int32_t check_sub(char* expr, vector<Symbol*>& symbols, bool& ret, uint32_t& sym
     s.pop();
     if(s.empty()){
         ret = false;
-        return res->addr;
+		return res->addr;
     }else{
         ret = true;
         write_to_log("Error: expression %s is irregular.", expr);
@@ -459,7 +673,7 @@ int32_t check_sub(char* expr, vector<Symbol*>& symbols, bool& ret, uint32_t& sym
     return 0;
 }
 
-int32_t resolve_addr_mode(char* arg, uint32_t& instruction1, uint32_t& instruction2, vector<int32_t>& literals, int32_t tmp,bool& ret, uint32_t& sym_num, vector<vector<Symbol*>>& symtbl){
+int32_t resolve_addr_mode(char* arg, vector<int32_t>& literals, int32_t tmp,bool& ret, uint32_t& sym_num, vector<vector<Symbol*>>& symtbl, int32_t& sub_res){
     char* out = strdup(arg);
     int i = 0; //operand counter
     int str_ind = 0;
@@ -472,8 +686,9 @@ int32_t resolve_addr_mode(char* arg, uint32_t& instruction1, uint32_t& instructi
     char* sub_str = strdup(arg);
     int j = 0;
     int sub_str_ind = 0;
+	char c;
     while(*str){
-        char c = *str;
+        c = *str;
         if(str_contains("+-*/()",c)){
             if(cur_operand){
                 cur_operand = false;
@@ -507,12 +722,9 @@ int32_t resolve_addr_mode(char* arg, uint32_t& instruction1, uint32_t& instructi
                     }else{
                         int32_t off = tmp;
                         
-                        if(sym->flag == 'L'){
-                            off += sym->addr;
-                            sym_num = sym->sec_num;
-                        }else{
-                            sym_num = sym->num;
-                        }
+						if (sym->flag == 'L' || (sym->flag == 'G' && sym->sec_num == -1)) {
+							off += sym->addr;
+						}
                         literals.push_back(off);
                     }                 
                 }else{
@@ -529,27 +741,62 @@ int32_t resolve_addr_mode(char* arg, uint32_t& instruction1, uint32_t& instructi
         }
         str++;
     }
-    sub_str[sub_str_ind++] = '\0';
-    //check if the subexpression is valid
-    char* sub_ex = to_postfix(sub_str);
-    bool err;
-    int32_t sub_res = check_sub(sub_ex, sub_literals, err, sym_num);
-    if(err){
-        ret = true;
-        return 0;
-    }
-    if(sub_res == 1){
-        ret = true;
-    }else if(sub_res == 0){
-        ret = true;
-    }else{
-        ret = false;
-    }
+	if (cur_operand) {
+		//exchange literal with a letter
+		char ins = ind_to_c(i++);
+		out[str_ind++] = ins;
+		literal[literal_ind] = '\0';
+		if (is_valid_label(literal)) {
+			Symbol* sym = get_symbol(symtbl, literal);
+			char sub_ins = ind_to_c(j++);
+			sub_str[sub_str_ind++] = sub_ins;
+			if (c == '+' || c == '-') {
+				sub_str[sub_str_ind++] = c;
+			}
+			if (sym == NULL) {//must be an external symbol
+							  //exchange it with 0
+				add_to_table(symtbl, literal, 0, &sym);
+				literals.push_back(0);
+			}
+			else {
+				int32_t off = tmp;
+
+				if (sym->flag == 'L' || (sym->flag == 'G' && sym->sec_num == -1)) {
+					off += sym->addr;
+				}
+				literals.push_back(off);
+			}
+			sub_literals.push_back(sym);
+		}
+		else {
+			literals.push_back(convert_to_num(literal));
+		}
+	}
+	out[str_ind++] = '\0';
+	sub_str[sub_str_ind++] = '\0';
+	//check if the subexpression is valid
+	char* sub_ex = to_postfix(sub_str);
+	bool err;
+	sub_res = check_sub(sub_ex, sub_literals, err, sym_num);
+	if (err) {
+		ret = true;
+		return 0;
+	}
+	if (sub_res == 1) {
+		ret = false;
+	}
+	else if (sub_res == 0) {
+		ret = false;
+	}
+	else {
+		ret = true;
+		return 0;
+	}
     char* ex = to_postfix(out);
     return eval_postfix(ex, literals);
 }
 
-int32_t resolve_addr_mode(char* arg, uint32_t& instruction1, uint32_t& instruction2, vector<int32_t>& literals, int32_t tmp,bool& ret, uint32_t& sym_num, int& r, vector<vector<Symbol*>>& symtbl){
+int32_t resolve_addr_mode(char* arg, vector<int32_t>& literals, int32_t tmp,bool& ret, uint32_t& sym_num, int& r, vector<vector<Symbol*>>& symtbl, int32_t& sub_res){
     char* out = strdup(arg);
     int i = 0; //operand counter
     int str_ind = 0;
@@ -562,8 +809,9 @@ int32_t resolve_addr_mode(char* arg, uint32_t& instruction1, uint32_t& instructi
     char* sub_str = strdup(arg);
     int j = 0;
     int sub_str_ind = 0;
+	char c;
     while(*str){
-        char c = *str;
+        c = *str;
         if(str_contains("+-*/()",c)){
             if(cur_operand){
                 cur_operand = false;
@@ -600,12 +848,9 @@ int32_t resolve_addr_mode(char* arg, uint32_t& instruction1, uint32_t& instructi
                     }else{
                         int32_t off = tmp;
                         
-                        if(sym->flag == 'L'){
-                            off += sym->addr;
-                            sym_num = sym->sec_num;
-                        }else{
-                            sym_num = sym->num;
-                        }
+						if (sym->flag == 'L' || (sym->flag == 'G' && sym->sec_num == -1)) {
+							off += sym->addr;
+						}
                         literals.push_back(off);
                     }                 
                 }else{
@@ -626,22 +871,57 @@ int32_t resolve_addr_mode(char* arg, uint32_t& instruction1, uint32_t& instructi
         ret = true;
         return 0;
     }
-    sub_str[sub_str_ind++] = '\0';
-    //check if the subexpression is valid
-    char* sub_ex = to_postfix(sub_str);
-    bool err;
-    int32_t sub_res = check_sub(sub_ex, sub_literals, err, sym_num);
-    if(err){
-        ret = true;
-        return 0;
-    }
-    if(sub_res == 1){
-        ret = true;
-    }else if(sub_res == 0){
-        ret = true;
-    }else{
-        ret = false;
-    }
+	if (cur_operand) {
+		//exchange literal with a letter
+		char ins = ind_to_c(i++);
+		out[str_ind++] = ins;
+		literal[literal_ind] = '\0';
+		if (is_valid_label(literal)) {
+			Symbol* sym = get_symbol(symtbl, literal);
+			char sub_ins = ind_to_c(j++);
+			sub_str[sub_str_ind++] = sub_ins;
+			if (c == '+' || c == '-') {
+				sub_str[sub_str_ind++] = c;
+			}
+			if (sym == NULL) {//must be an external symbol
+							  //exchange it with 0
+				add_to_table(symtbl, literal, 0, &sym);
+				literals.push_back(0);
+			}
+			else {
+				int32_t off = tmp;
+
+				if (sym->flag == 'L' || (sym->flag == 'G' && sym->sec_num == -1)) {
+					off += sym->addr;
+				}
+				literals.push_back(off);
+			}
+			sub_literals.push_back(sym);
+		}
+		else {
+			literals.push_back(convert_to_num(literal));
+		}
+	}
+	out[str_ind++] = '\0';
+	sub_str[sub_str_ind++] = '\0';
+	//check if the subexpression is valid
+	char* sub_ex = to_postfix(sub_str);
+	bool err;
+	sub_res = check_sub(sub_ex, sub_literals, err, sym_num);
+	if (err) {
+		ret = true;
+		return 0;
+	}
+	if (sub_res == 1) {
+		ret = false;
+	}
+	else if (sub_res == 0) {
+		ret = false;
+	}
+	else {
+		ret = true;
+		return 0;
+	}
     char* ex = to_postfix(out);
     return eval_postfix(ex, literals);
 }
@@ -652,6 +932,7 @@ int trans_uncond_branch(uint8_t opcode, char** args, int num_args, vector<vector
     uint32_t instruction2;
     vector<int32_t> literals;
     uint32_t sym_num;
+	int32_t sub_res;
     bool ret;
     /*  args[0] can use following address modes:
         2. register indirect
@@ -669,11 +950,13 @@ int trans_uncond_branch(uint8_t opcode, char** args, int num_args, vector<vector
 
         if the symbol is not used then just build in the appropriate value
         depending on the location of this section the offset/immediate/address value will change*/
-            instruction2 = resolve_addr_mode(args[0], instruction1, instruction2, literals, -4, ret, sym_num, symtbl);
+            instruction2 = resolve_addr_mode(args[0] + 1, literals, -4, ret, sym_num, symtbl, sub_res);
             if(ret){
                 return -1;
             }
-            add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'R', sym_num);
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'R', sym_num);
+			}
             location_counter+=4;
             instruction1 = (opcode<<23) | (7<<20) | (translate_reg("pc")<<15);
             write_hex_inst(instruction1, reltbls[rel_ind]);
@@ -689,11 +972,13 @@ int trans_uncond_branch(uint8_t opcode, char** args, int num_args, vector<vector
             write_hex_inst(instruction1, reltbls[rel_ind]);
             break;
         case 6://resolve the possible use of difference of two symbols
-            instruction2 = resolve_addr_mode(args[0], instruction1, instruction2, literals, 0, ret, sym_num, symtbl);
+            instruction2 = resolve_addr_mode(args[0], literals, 0, ret, sym_num, symtbl, sub_res);
             if(ret){
                 return -1;
             }
-            add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			}
             location_counter+=4;
             instruction1 = (opcode<<23) | (addr_mode<<20);
             write_hex_inst(instruction1, reltbls[rel_ind]);
@@ -702,11 +987,13 @@ int trans_uncond_branch(uint8_t opcode, char** args, int num_args, vector<vector
         case 7://resolve the possible use of difference of two symbols
                 // find register
             remove_brackets(args[0]);
-            instruction2 = resolve_addr_mode(args[0], instruction1, instruction2, literals, 0, ret, sym_num, r, symtbl);
+            instruction2 = resolve_addr_mode(args[0], literals, 0, ret, sym_num, r, symtbl, sub_res);
             if(ret){
                 return -1;
             }
-            add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			}
             location_counter+=4;
             instruction1 = (opcode<<23) | (addr_mode<<20) | (r<<15);
             write_hex_inst(instruction1, reltbls[rel_ind]);
@@ -719,10 +1006,11 @@ int trans_uncond_branch(uint8_t opcode, char** args, int num_args, vector<vector
 }
 
 int trans_cond_branch(uint8_t opcode, char** args, int num_args, vector<vector<Symbol*>>& symtbl, vector<RelTable*>& reltbls, int rel_ind, uint32_t& location_counter){
-    int addr_mode = addressing_mode(args[0]);
+    int addr_mode = addressing_mode(args[1]);
     uint32_t instruction1;
     uint32_t instruction2;
     vector<int32_t> literals;
+	int32_t sub_res;
     uint32_t sym_num;
     bool ret;
     int rt;
@@ -745,13 +1033,15 @@ int trans_cond_branch(uint8_t opcode, char** args, int num_args, vector<vector<S
 
                 if the symbol is not used then just build in the appropriate value
                 depending on the location of this section the offset/immediate/address value will change*/
-            instruction2 = resolve_addr_mode(args[1], instruction1, instruction2, literals, -4, ret, sym_num, symtbl);
+            instruction2 = resolve_addr_mode(args[1] + 1, literals, -4, ret, sym_num, symtbl, sub_res);
             if(ret){
                 return -1;
             }
-            add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'R', sym_num);
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'R', sym_num);
+			}
             location_counter+=4;
-            instruction1 = (opcode<<23) | (7<<20) | (translate_reg("pc")<<15);
+            instruction1 = (opcode<<23) | (7<<20) | (translate_reg("pc")<<15) | (r1 << 10);
             write_hex_inst(instruction1, reltbls[rel_ind]);
             write_hex_inst(instruction2, reltbls[rel_ind]);
             break;
@@ -765,26 +1055,30 @@ int trans_cond_branch(uint8_t opcode, char** args, int num_args, vector<vector<S
             write_hex_inst(instruction1, reltbls[rel_ind]);
             break;
         case 6://resolve the possible use of difference of two symbols
-            instruction2 = resolve_addr_mode(args[1], instruction1, instruction2, literals, 0, ret, sym_num, symtbl);
+            instruction2 = resolve_addr_mode(args[1], literals, 0, ret, sym_num, symtbl, sub_res);
             if(ret){
                 return -1;
             }
-            add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			}
             location_counter+=4;
-            instruction1 = (opcode<<23) | (addr_mode<<20);
+            instruction1 = (opcode<<23) | (addr_mode<<20) | (r1 << 10);
             write_hex_inst(instruction1, reltbls[rel_ind]);
             write_hex_inst(instruction2, reltbls[rel_ind]);
             break;
         case 7://resolve the possible use of difference of two symbols
                 // find register
             remove_brackets(args[1]);
-            instruction2 = resolve_addr_mode(args[1], instruction1, instruction2, literals, 0, ret, sym_num, r, symtbl);
+            instruction2 = resolve_addr_mode(args[1], literals, 0, ret, sym_num, r, symtbl, sub_res);
             if(ret){
                 return -1;
             }
-            add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			}
             location_counter+=4;
-            instruction1 = (opcode<<23) | (addr_mode<<20) | (r<<15);
+            instruction1 = (opcode<<23) | (addr_mode<<20) | (r<<15) | (r1<<10);
             write_hex_inst(instruction1, reltbls[rel_ind]);
             write_hex_inst(instruction2, reltbls[rel_ind]);
             break;
@@ -795,10 +1089,11 @@ int trans_cond_branch(uint8_t opcode, char** args, int num_args, vector<vector<S
 }
 
 int trans_load(uint8_t opcode,const char* name, char** args, int num_args, vector<vector<Symbol*>>& symtbl, vector<RelTable*>& reltbls, int rel_ind, uint32_t& location_counter){
-    int addr_mode = addressing_mode(args[0]);
+    int addr_mode = addressing_mode(args[1]);
     uint32_t instruction1;
     uint32_t instruction2;
     vector<int32_t> literals;
+	int32_t sub_res;
     uint32_t sym_num;
     bool ret;
     uint8_t type = 0;
@@ -834,7 +1129,7 @@ int trans_load(uint8_t opcode,const char* name, char** args, int num_args, vecto
                 return -1;
             }
             location_counter+=4;
-            instruction1 = (opcode<<23) | (addr_mode<<20) | (rt<<10) | (rs<<15);
+            instruction1 = (opcode<<23) | (addr_mode<<20) | (rs << 15) | (rt << 10);
             break;
         /*insert*/
         case 2://the simplest case
@@ -844,7 +1139,7 @@ int trans_load(uint8_t opcode,const char* name, char** args, int num_args, vecto
                 return -1;
             }
             location_counter+=4;
-            instruction1 = (opcode<<23) | (addr_mode<<20) | (rt<<15) | (rs<<10);
+            instruction1 = (opcode<<23) | (addr_mode<<20) | (rs<<15) | (rt << 10);
             location_counter+=4;
             write_hex_inst(instruction1, reltbls[rel_ind]);
             break;
@@ -854,51 +1149,72 @@ int trans_load(uint8_t opcode,const char* name, char** args, int num_args, vecto
 
         if the symbol is not used then just build in the appropriate value
         depending on the location of this section the offset/immediate/address value will change*/
-            instruction2 = resolve_addr_mode(args[1], instruction1, instruction2, literals, -4, ret, sym_num, symtbl);
+            instruction2 = resolve_addr_mode(args[1] + 1, literals, -4, ret, sym_num, symtbl, sub_res);
             if(ret){
                 return -1;
             }
-            add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'R', sym_num);
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'R', sym_num);
+			}
             location_counter+=4;
-            instruction1 = (opcode<<23) | (7<<20) | (translate_reg("pc")<<15);
+            instruction1 = (opcode<<23) | (7<<20) | (translate_reg("pc")<<15) | (rt << 10);
             write_hex_inst(instruction1, reltbls[rel_ind]);
             write_hex_inst(instruction2, reltbls[rel_ind]);
             break;
         case 6://resolve the possible use of difference of two symbols
-            instruction2 = resolve_addr_mode(args[1], instruction1, instruction2, literals, 0, ret, sym_num, symtbl);
+            instruction2 = resolve_addr_mode(args[1], literals, 0, ret, sym_num, symtbl, sub_res);
             if(ret){
                 return -1;
             }
-            add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			}
             location_counter+=4;
-            instruction1 = (opcode<<23) | (addr_mode<<20);
+            instruction1 = (opcode<<23) | (addr_mode<<20) | (rt << 10);
             write_hex_inst(instruction1, reltbls[rel_ind]);
             write_hex_inst(instruction2, reltbls[rel_ind]);
             break;
         case 7://resolve the possible use of difference of two symbols
                 // find register
             remove_brackets(args[1]);
-            instruction2 = resolve_addr_mode(args[1], instruction1, instruction2, literals, 0, ret, sym_num, r, symtbl);
+            instruction2 = resolve_addr_mode(args[1], literals, 0, ret, sym_num, r, symtbl, sub_res);
             if(ret){
                 return -1;
             }
-            add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			}
             location_counter+=4;
-            instruction1 = (opcode<<23) | (addr_mode<<20) | (r<<15);
+            instruction1 = (opcode<<23) | (addr_mode<<20) | (r<<15) | (rt << 10);
             write_hex_inst(instruction1, reltbls[rel_ind]);
             write_hex_inst(instruction2, reltbls[rel_ind]);
             break;
         case 3:
-            instruction2 = resolve_addr_mode(args[1] + 1, instruction1, instruction2, literals, 0, ret, sym_num, symtbl);
+            instruction2 = resolve_addr_mode(args[1] + 1, literals, 0, ret, sym_num, symtbl, sub_res);
             if(ret){
                 return -1;
             }
-            add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			}
             location_counter+=4;
-            instruction1 = (opcode<<23) | (addr_mode<<20);
+            instruction1 = (opcode<<23) | (addr_mode<<20) | (rt << 10);
             write_hex_inst(instruction1, reltbls[rel_ind]);
             write_hex_inst(instruction2, reltbls[rel_ind]);
             break;
+		case 4:
+			instruction2 = resolve_addr_mode(args[1] + 1, literals, 0, ret, sym_num, symtbl, sub_res);
+			if (ret) {
+				return -1;
+			}
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			}
+			location_counter += 4;
+			instruction1 = (opcode << 23) | (addr_mode << 20) | (rt << 10);
+			write_hex_inst(instruction1, reltbls[rel_ind]);
+			write_hex_inst(instruction2, reltbls[rel_ind]);
+			break;
         default:
             return -1;
     }
@@ -906,10 +1222,11 @@ int trans_load(uint8_t opcode,const char* name, char** args, int num_args, vecto
 }
 
 int trans_store(uint8_t opcode,const char* name, char** args, int num_args, vector<vector<Symbol*>>& symtbl, vector<RelTable*>& reltbls, int rel_ind, uint32_t& location_counter){
-    int addr_mode = addressing_mode(args[0]);
+    int addr_mode = addressing_mode(args[1]);
     uint32_t instruction1;
     uint32_t instruction2;
     vector<int32_t> literals;
+	int32_t sub_res;
     uint32_t sym_num;
     bool ret;
     uint8_t type = 0;
@@ -938,7 +1255,7 @@ int trans_store(uint8_t opcode,const char* name, char** args, int num_args, vect
             if(rt == -1){
                 return -1;
             }
-            instruction1 = (opcode<<23) | (addr_mode<<20) | (rs<<10) | (rt<<15);
+            instruction1 = (opcode<<23) | (addr_mode<<20) | (rt<<15) | (rs << 10);
             write_hex_inst(instruction1, reltbls[rel_ind]);
             break;
         case 2://the simplest case
@@ -948,7 +1265,7 @@ int trans_store(uint8_t opcode,const char* name, char** args, int num_args, vect
                 return -1;
             }
             location_counter+=4;
-            instruction1 = (opcode<<23) | (addr_mode<<20) | (rs<<10) | (rt<<15);
+            instruction1 = (opcode<<23) | (addr_mode<<20) | (rt<<15) | (rs << 10);
             write_hex_inst(instruction1, reltbls[rel_ind]);
             break;
         case 1:/*resolve the use of a symbol and depending if it is global or not
@@ -957,37 +1274,43 @@ int trans_store(uint8_t opcode,const char* name, char** args, int num_args, vect
 
         if the symbol is not used then just build in the appropriate value
         depending on the location of this section the offset/immediate/address value will change*/
-            instruction2 = resolve_addr_mode(args[1], instruction1, instruction2, literals, -4, ret, sym_num, symtbl);
+            instruction2 = resolve_addr_mode(args[1] + 1, literals, -4, ret, sym_num, symtbl, sub_res);
             if(ret){
                 return -1;
             }
-            add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'R', sym_num);
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'R', sym_num);
+			}
             location_counter+=4;
-            instruction1 = (opcode<<23) | (7<<20) | (translate_reg("pc")<<15);
+            instruction1 = (opcode<<23) | (7<<20) | (translate_reg("pc")<<15) | (rs << 10);
             write_hex_inst(instruction1, reltbls[rel_ind]);
             write_hex_inst(instruction2, reltbls[rel_ind]);
             break;
         case 6://resolve the possible use of difference of two symbols
-            instruction2 = resolve_addr_mode(args[1], instruction1, instruction2, literals, 0, ret, sym_num, symtbl);
+            instruction2 = resolve_addr_mode(args[1], literals, 0, ret, sym_num, symtbl, sub_res);
             if(ret){
                 return -1;
             }
-            add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			}
             location_counter+=4;
-            instruction1 = (opcode<<23) | (addr_mode<<20);
+            instruction1 = (opcode<<23) | (addr_mode<<20) | (rs << 10);
             write_hex_inst(instruction1, reltbls[rel_ind]);
             write_hex_inst(instruction2, reltbls[rel_ind]);
             break;
         case 7://resolve the possible use of difference of two symbols
                 // find register
             remove_brackets(args[1]);
-            instruction2 = resolve_addr_mode(args[1], instruction1, instruction2, literals, 0, ret, sym_num, r, symtbl);
+            instruction2 = resolve_addr_mode(args[1], literals, 0, ret, sym_num, r, symtbl, sub_res);
             if(ret){
                 return -1;
-            }
-            add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			}
+			if (sub_res == 1) {
+				add_rel_symbol(*(reltbls[rel_ind]), location_counter, 'A', sym_num);
+			}
             location_counter+=4;
-            instruction1 = (opcode<<23) | (addr_mode<<20) | (r<<15);
+            instruction1 = (opcode<<23) | (addr_mode<<20) | (r<<15) | (rs << 10);
             write_hex_inst(instruction1, reltbls[rel_ind]);
             write_hex_inst(instruction2, reltbls[rel_ind]);
             break;

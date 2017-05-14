@@ -62,4 +62,16 @@ void assign_ranks(std::vector<std::vector<Symbol*>>& symtbl);
 
 int translate_reg(const char* str);
 
+void name_already_exists(const char* name);
+
+void invalid_label(uint32_t line, const char* label);
+
+void inst_error(uint32_t line, const char* name, char** args, uint8_t num_args);
+
+void skip_comment(char* str);
+
+void extra_arg_error(uint32_t line, const char* extra);
+
+int add_if_label(uint32_t line, char* str, uint32_t location_counter, std::vector<std::vector<Symbol*>>& symtbl);
+
 #endif

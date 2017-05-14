@@ -36,9 +36,9 @@ int trans_ret(uint8_t opcode, char** args, int num_args, std::vector<RelTable*>&
 
 int32_t check_sub(char* expr, std::vector<Symbol*>& symbols, bool& ret, uint32_t& sym_num);
 
-int32_t resolve_addr_mode(char* arg, uint32_t& instruction1, uint32_t& instruction2, std::vector<int32_t>& literals, int32_t tmp,bool& ret, uint32_t& sym_num);
+int32_t resolve_addr_mode(char* arg, std::vector<int32_t>& literals, int32_t tmp, bool& ret, uint32_t& sym_num, std::vector<std::vector<Symbol*>>& symtbl, int32_t& sub_res);
 
-int32_t resolve_addr_mode(char* arg, uint32_t& instruction1, uint32_t& instruction2, std::vector<int32_t>& literals, int32_t tmp,bool& ret, uint32_t& sym_num, int& r);
+int32_t resolve_addr_mode(char* arg, std::vector<int32_t>& literals, int32_t tmp, bool& ret, uint32_t& sym_num, int& r, std::vector<std::vector<Symbol*>>& symtbl, int32_t& sub_res);
 
 int trans_uncond_branch(uint8_t opcode, char** args, int num_args, std::vector<std::vector<Symbol*>>& symtbl, std::vector<RelTable*>& reltbls, int rel_ind, uint32_t& location_counter);
 

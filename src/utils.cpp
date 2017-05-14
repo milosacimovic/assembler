@@ -62,7 +62,7 @@ void log_inst(const char* name, char** args, uint8_t num_args) {
     }
 }
 
-
+/*
 char* strdup(const char* str){
     char* dup = (char*)malloc(sizeof(char)*(strlen(str) + 1));
     if(dup){
@@ -70,7 +70,7 @@ char* strdup(const char* str){
     }
     return dup;
 }
-
+*/
 char* to_lower(const char* str){
     char* cpy = strdup(str);
     int len = strlen(cpy);
@@ -91,7 +91,7 @@ bool str_contains(const char* str, char c){
     return false;
 }
 
-bool str_contains(vector<char>& str, char c){
+bool char_vector_contains(vector<char>& str, char c){
     size_t sz = str.size();
     for(int i = 0; i < sz; i++){
         if(str[i] == c){

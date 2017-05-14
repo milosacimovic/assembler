@@ -9,67 +9,16 @@
 
 #include "assembler.h"
 
+
+const uint8_t MAX_ARGS = 3;
+const uint16_t BUF_SIZE = 1024;
+const char* IGNORE_CHARS = " \f\n\r\t\v,";
+const int NUM_BUCKETS = 54;
+
 using namespace std;
 
-void name_already_exists(const char* name){
-    write_to_log("Error: name %s already exists", name);
-}
 
-void invalid_label(uint32_t line, const char* label){
-    write_to_log("Error: invalid label on line %u: %s", line, label);
-}
 
-void inst_error(uint32_t line, const char* name, char** args, uint8_t num_args){
-    write_to_log("Error: on line %u:", line);
-    log_inst(name, args, num_args);
-}
-
-void skip_comment(char* str) {
-    char* comment_start = strchr(str, ';');
-    if (comment_start) {
-        *comment_start = '\0';
-    }
-}
-
-void extra_arg_error(uint32_t line, const char* extra){
-    write_to_log("Error: extra argument on line %u: %s", line, extra);
-}
-/* If the @str:
-    1. is not a label, it returns -1
-    2. is a label, but not valid it returns 1
-    3. is a valid label, but adding it to symbol table was unsuccessful, it returns 1
-    4. is a valid label and adding it to symbol table was successful, it returns 0
-*/
-int add_if_label(uint32_t line, char* str, uint32_t location_counter, vector<vector<Symbol*>>& symtbl){
-    Symbol* in;
-    uint32_t sz = strlen(str);
-    if(str[sz - 1] == ':'){
-        str[sz - 1] = '\0';
-        if(is_valid_label(str)){
-            Symbol* out = get_symbol(symtbl, str);
-            if(out != NULL){
-                if(out->sec_num == 0){
-                    int num_secs = symtbl[NUM_BUCKETS - 1].size();
-                    out->sec_num =  num_secs;
-                    out->addr = location_counter;
-                }else{
-                    name_already_exists(str);//withing this section
-                    //name clashing
-                }
-                
-            }else{
-                if(add_to_table(symtbl, str, location_counter, &in) == 0){
-                    return 0;
-                }
-            }
-        }else{
-            invalid_label(line, str);
-            return 1;
-        }
-    }else{
-        return -1;
-    }
-}
 /* First pass of the assembler.
 
    This function should read each line, strip all comments, scan for labels,
@@ -105,7 +54,7 @@ bool pass_one(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl){
         char* args[MAX_ARGS + 1];
         uint8_t num_args = 0;
         int write = 0;
-        skip_comment(buf);
+        skip_comment(buffer);
         if(strcmp(buffer, "") == 0){
             line++;
             continue;
@@ -129,7 +78,7 @@ bool pass_one(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl){
         if(is_directive(name)){
 
             if(strcmp(name, ".end") == 0){
-                symtbl[NUM_BUCKETS - 1][symtbl[NUM_BUCKETS- 1].size() - 1]->sec_size = location_counter;
+                symtbl[NUM_BUCKETS - 1][symtbl[NUM_BUCKETS- 1].size() - 1]->sec_size = location_counter - symtbl[NUM_BUCKETS - 1][symtbl[NUM_BUCKETS - 1].size() - 1]->addr;
                 fprintf(output, "%s", name);
                 return error;
             }
@@ -137,8 +86,8 @@ bool pass_one(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl){
             
         }else{//it is an instruction mnemonic or a def directive
             cur = strtok(NULL, IGNORE_CHARS);
-            char *def = to_lower(cur);
-            if(strcmp(def, "def")){
+            char *def = cur;
+            if(strcmp(def, "def") == 0|| strcmp(def, "DEF") == 0){
                 def_directive(buf, symtbl);
                 line++;
                 continue;
@@ -147,7 +96,7 @@ bool pass_one(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl){
             //add a label as extern if it is not in symbol table
             //if it is then nothing
             while(cur != NULL){
-                args[num_args++] = to_lower(cur);
+                args[num_args++] = cur;
                 remove_spaces(args[num_args-1]);
                 cur = strtok(NULL, ",\f\n\r\t\v");
                 if(num_args > MAX_ARGS) {
@@ -167,9 +116,10 @@ bool pass_one(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl){
             free(prev_name);
         }
         prev_name = strdup(name);
+		free(name);
         line++;
     }
-    symtbl[NUM_BUCKETS - 1][symtbl[NUM_BUCKETS- 1].size() - 1]->sec_size = location_counter;
+    symtbl[NUM_BUCKETS - 1][symtbl[NUM_BUCKETS- 1].size() - 1]->sec_size = location_counter - symtbl[NUM_BUCKETS - 1][symtbl[NUM_BUCKETS - 1].size() - 1]->addr;
     fprintf(output, ".end");
     return error;
 }
@@ -193,7 +143,7 @@ int pass_two(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl, vector<
     while(fgets(buffer, BUF_SIZE, input) != NULL){
         buf = strdup(buffer);
         char * cur = strtok(buffer, IGNORE_CHARS);
-        char mnemonic[10];
+		char* mnemonic = to_lower(cur);
         if(is_directive(mnemonic)){
             if(strcmp(mnemonic, ".end") == 0){
                 return error;
@@ -234,8 +184,8 @@ int pass_two(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl, vector<
 
 static int open_files(FILE** input, FILE** output, const char* in_name, const char* out_name){
     
-    *input = fopen(in_name, "r");
-    *output = fopen(out_name, "w");
+    fopen_s(input, in_name, "r");
+    fopen_s(output, out_name, "w");
 
     if(*input == NULL){
         write_to_log("Error: upon opening file %s\n", input);
@@ -267,7 +217,7 @@ int assemble(const char* input, const char* tmp, const char* out){
             exit(1);
         }
 
-        if(pass_one(in_file_handle, out_file_handle, symtbl)){
+        if(pass_one(in_file_handle, inter_file_handle, symtbl)){
             err = 1;
         }
         create_rel_tables(reltbls, symtbl);
@@ -320,6 +270,7 @@ int main(int argc, char* argv[]){
     char* in_file = strdup(argv[1]);
 
     char* inter_file = (char*)malloc(in_file_len*sizeof(char)+3);
+	strcpy(inter_file, in_file);
     char* out_file = strdup(argv[1]);
     inter_file[in_file_len - 1] = 'i';
     inter_file[in_file_len] = 'n';

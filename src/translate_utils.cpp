@@ -51,7 +51,7 @@ bool is_valid_label(const char* str) {
 bool is_directive(const char* dir){
     char* str = strdup(dir);
     char* p = strrchr(str, '.');
-    if(p){
+    if(p && p != str){
         *p = '\0';
     }
     if(strcmp(str, ".global") == 0 ||
@@ -65,8 +65,10 @@ bool is_directive(const char* dir){
         strcmp(str, "dw") == 0 ||
         strcmp(str, "dd") == 0 ||
         strcmp(str, "def") == 0){
+		free(str);
             return true;
     }else{
+			free(str);
             return false;
     }
 }
@@ -74,7 +76,7 @@ bool is_directive(const char* dir){
 bool is_pass_two_directive(const char* dir){
     char* str = strdup(dir);
     char* p = strrchr(str, '.');
-    if(p){
+    if(p && p != str){
         *p = '\0';
     }
     if( strcmp(str, ".text") == 0 ||
@@ -147,6 +149,7 @@ int32_t bin_op(int32_t oper1, int32_t oper2, char op){
             res = oper1 / oper2;
             break;
     }
+	return res;
 }
 
 void remove_spaces(char* source){
@@ -267,7 +270,6 @@ int32_t eval_postfix(char* expr, vector<int32_t> literals){
     while(*expr){
         char x = *expr;
         if(is_operand(x)){
-            char x;
             s.push(literals[c_to_ind(x)]);
         }else if(is_operator(x)){
             int32_t oper2 = s.top();
@@ -285,6 +287,7 @@ int32_t eval_postfix(char* expr, vector<int32_t> literals){
         return res;
     }else{
         write_to_log("Error: expression %s is irregular.", expr);
+		return 0;
     }
 }
 
@@ -318,6 +321,15 @@ int32_t calculate_expression(char* expr){
         }
         str++;
     }
+	if (cur_literal) {
+		cur_literal = false;
+		//exchange literal with a letter
+		char ins = ind_to_c(i++);
+		out[str_ind++] = ins;
+		literal[literal_ind] = '\0';
+		literals.push_back(convert_to_num(literal));
+	}
+	out[str_ind++] = '\0';
     char* ex = to_postfix(out);
     free(out);
     return eval_postfix(ex, literals);
@@ -335,29 +347,29 @@ void assign_ranks(vector<vector<Symbol*>>& symtbl){
 
 
 int translate_reg(const char* str) {
-    if (strcmp(str, "r0") == 0)      return 0;
-    else if (strcmp(str, "r1") == 0)    return 1;
-    else if (strcmp(str, "r2") == 0)   return 2;
-    else if (strcmp(str, "r3") == 0)   return 3;
-    else if (strcmp(str, "r4") == 0)   return 4;
-    else if (strcmp(str, "r5") == 0)   return 5;
-    else if (strcmp(str, "r6") == 0)   return 6;
-    else if (strcmp(str, "r7") == 0)   return 7;
-    else if (strcmp(str, "r8") == 0)   return 8;
-    else if (strcmp(str, "r9") == 0)   return 9;
-    else if (strcmp(str, "r10") == 0)   return 10;
-    else if (strcmp(str, "r11") == 0)   return 11;
-    else if (strcmp(str, "r12") == 0)   return 12;
-    else if (strcmp(str, "r13") == 0)   return 13;
-    else if (strcmp(str, "r14") == 0)   return 14;
-    else if (strcmp(str, "r15") == 0)   return 15;
-    else if (strcmp(str, "sp") == 0)   return 16;
-    else if (strcmp(str, "pc") == 0)   return 17;
+    if (strcmp(str, "r0") == 0 || strcmp(str, "R0") == 0)      return 0;
+    else if (strcmp(str, "r1") == 0 || strcmp(str, "R1") == 0)    return 1;
+    else if (strcmp(str, "r2") == 0 || strcmp(str, "R2") == 0)   return 2;
+    else if (strcmp(str, "r3") == 0 || strcmp(str, "R3") == 0)   return 3;
+    else if (strcmp(str, "r4") == 0 || strcmp(str, "R4") == 0)   return 4;
+    else if (strcmp(str, "r5") == 0 || strcmp(str, "R5") == 0)   return 5;
+    else if (strcmp(str, "r6") == 0 || strcmp(str, "R6") == 0)   return 6;
+    else if (strcmp(str, "r7") == 0 || strcmp(str, "R7") == 0)   return 7;
+    else if (strcmp(str, "r8") == 0 || strcmp(str, "R8") == 0)   return 8;
+    else if (strcmp(str, "r9") == 0 || strcmp(str, "R9") == 0)   return 9;
+    else if (strcmp(str, "r10") == 0 || strcmp(str, "R10") == 0)   return 10;
+    else if (strcmp(str, "r11") == 0 || strcmp(str, "R11") == 0)   return 11;
+    else if (strcmp(str, "r12") == 0 || strcmp(str, "R12") == 0)   return 12;
+    else if (strcmp(str, "r13") == 0 || strcmp(str, "R13") == 0)   return 13;
+    else if (strcmp(str, "r14") == 0 || strcmp(str, "R14") == 0)   return 14;
+    else if (strcmp(str, "r15") == 0 || strcmp(str, "R15") == 0)   return 15;
+    else if (strcmp(str, "sp") == 0 || strcmp(str, "SP") == 0)   return 16;
+    else if (strcmp(str, "pc") == 0 || strcmp(str, "PC") == 0)   return 17;
     else return -1;
 }
 
 void write_hex_inst(uint32_t inst, RelTable* rel){
-    char str[9];  
+    char str[9];   s
     sprintf(str, "%08x", inst);
     uint8_t first = strtol(str+6,NULL,16);
     str[6] = '\0';
@@ -371,4 +383,71 @@ void write_hex_inst(uint32_t inst, RelTable* rel){
     rel->section_content[rel->ind++] = third;
     rel->section_content[rel->ind++] = fourth;
     
+}
+
+void name_already_exists(const char* name) {
+	write_to_log("Error: name %s already exists", name);
+}
+
+void invalid_label(uint32_t line, const char* label) {
+	write_to_log("Error: invalid label on line %u: %s", line, label);
+}
+
+void inst_error(uint32_t line, const char* name, char** args, uint8_t num_args) {
+	write_to_log("Error: on line %u:", line);
+	log_inst(name, args, num_args);
+}
+
+void skip_comment(char* str) {
+	char* comment_start = strchr(str, ';');
+	if (comment_start) {
+		*comment_start = '\0';
+	}
+}
+
+
+
+void extra_arg_error(uint32_t line, const char* extra) {
+	write_to_log("Error: extra argument on line %u: %s", line, extra);
+}
+
+/* If the @str:
+1. is not a label, it returns -1
+2. is a label, but not valid it returns 1
+3. is a valid label, but adding it to symbol table was unsuccessful, it returns 1
+4. is a valid label and adding it to symbol table was successful, it returns 0
+*/
+int add_if_label(uint32_t line, char* str, uint32_t location_counter, vector<vector<Symbol*>>& symtbl) {
+	uint32_t sz = strlen(str);
+	if (str[sz - 1] == ':') {
+		str[sz - 1] = '\0';
+		if (is_valid_label(str)) {
+			Symbol* out = get_symbol(symtbl, str);
+			int num_secs = symtbl[NUM_BUCKETS - 1].size();
+			if (out != NULL) {
+				if (out->sec_num == 0) {
+					out->sec_num = num_secs;
+					out->addr = location_counter;
+				}
+				else {
+					name_already_exists(str);//withing this section
+											 //name clashing
+				}
+
+			}
+			else {
+				if (add_to_table(symtbl, str, location_counter, &out) == 0) {
+					out->sec_num = num_secs;
+					return 0;
+				}
+			}
+		}
+		else {
+			invalid_label(line, str);
+			return 1;
+		}
+	}
+	else {
+		return -1;
+	}
 }

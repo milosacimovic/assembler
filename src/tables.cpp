@@ -5,11 +5,6 @@
 #include "tables.h"
 #include "utils.h"
 
-const uint8_t MAX_ARGS = 3;
-const uint16_t BUF_SIZE = 1024;
-const char* IGNORE_CHARS = " \f\n\r\t\v,";
-const int NUM_BUCKETS = 54;
-
 using namespace std;
 
 
@@ -114,17 +109,21 @@ Symbol* get_symbol(vector<vector<Symbol*>>& symtbl, const char* name){
 void write_table(vector<vector<Symbol*>>& symtbl, FILE* file){
 
     fprintf(file, "#TabelaSimbola\n");
-    fprintf(file, "0 UND -2 0x%08x L", 0);
+    fprintf(file, "0 UND -2 0x%08x L\n", 0);
     int num_sections = symtbl[NUM_BUCKETS-1].size();
     for(int i =0; i < num_sections; i++){
         Symbol * current = symtbl[NUM_BUCKETS - 1][i];
-        fprintf(file, "SEG %u %s %d 0x%08x 0x%08x %s\n",current->num, current->name, current->num, current->addr, current->sec_size, current->flags);
+        fprintf(file, "SEG %u %s %d 0x%08x 0x%08x ",current->num, current->name, current->num, current->addr, current->sec_size);
+		for (int j = 0; j < current->flags.size(); j++) {
+			fprintf(file, "%c", current->flags[j]);
+		}
+		fprintf(file, "\n");
     }
     for(int i = 0; i < NUM_BUCKETS - 1; i++){
         int sz = symtbl[i].size();
         for(int j = 0; j < sz; j++){
             Symbol* current = symtbl[i][j];
-            fprintf(file, "SYM %u %s %d 0x%08x %c", current->num, current->name, current->sec_num, current->addr, current->flag);
+            fprintf(file, "SYM %u %s %d 0x%08x %c\n", current->num, current->name, current->sec_num, current->addr, current->flag);
         }
     }
 }
@@ -134,7 +133,7 @@ void create_rel_tables(vector<RelTable*>& rels, vector<vector<Symbol*>>& symtbl)
     int secs = NUM_BUCKETS - 1;
     for(int i = 0; i < num_sec; i++){
         RelTable* t;
-        if(str_contains(symtbl[secs][NUM_BUCKETS-1]->flags, 'P')){
+        if(char_vector_contains(symtbl[secs][num_sec -1]->flags, 'P')){
             t = new (nothrow)RelTable();
             if(t == NULL){
                 alloc_fail();
@@ -173,7 +172,7 @@ void free_rel_tables(vector<RelTable*>& rels){
 
 void write_out(FILE* out, vector<vector<Symbol*>>& symtbl, vector<RelTable*>& rels){
 
-    uint8_t sz = strlen("#rel");
+    uint8_t sz = (uint8_t)strlen("#rel");
     int secs = NUM_BUCKETS - 1;
     int num_secs = symtbl[secs].size();
     int k = 0;
@@ -181,7 +180,7 @@ void write_out(FILE* out, vector<vector<Symbol*>>& symtbl, vector<RelTable*>& re
     for(int i = 0; i < num_secs; i++){
         Symbol* sym = symtbl[secs][i];
         //section
-        if(str_contains(sym->flags, 'P')){
+        if(char_vector_contains(sym->flags, 'P')){
             char* header = (char*)malloc(sizeof(char)*(sz + strlen(sym->name) + 1));
             strcpy(header, "#rel");
             strcat(header, sym->name);//header = #rel.sec_name
@@ -199,7 +198,7 @@ void write_out(FILE* out, vector<vector<Symbol*>>& symtbl, vector<RelTable*>& re
             //contents of section
             for(int j = 1; j <= sym->sec_size; j++){
                 
-                fprintf(out, "%02x", rel_table->section_content[j]);
+                fprintf(out, "%02x", rel_table->section_content[j-1]);
                 if(j % 16 == 0){
                     fprintf(out,"\n");
                 }else{
@@ -207,5 +206,6 @@ void write_out(FILE* out, vector<vector<Symbol*>>& symtbl, vector<RelTable*>& re
                 }
             }
         }//end_if
+		fprintf(out, "\n");
     }//end_for
 }
