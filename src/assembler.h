@@ -5,7 +5,7 @@
 
 int assemble(const char* input, const char* tmp, const char* out);
 
-bool pass_one(FILE* input, FILE* output, std::vector<std::vector<Symbol*>>& symtbl);
+bool pass_one(FILE* input, FILE* output, std::vector<std::vector<Symbol*>>& symtbl, TNSymbol** TNS);
 
 int pass_two(FILE* input, FILE* output, std::vector<std::vector<Symbol*>>& symtbl, std::vector<RelTable*>& reltbl);
 

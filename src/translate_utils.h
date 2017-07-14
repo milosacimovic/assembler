@@ -56,8 +56,6 @@ char* to_postfix(char* expr);
 
 int32_t eval_postfix(char* expr, std::vector<int32_t> literals);
 
-int32_t calculate_expression(char* expr);
-
 void assign_ranks(std::vector<std::vector<Symbol*>>& symtbl);
 
 int translate_reg(const char* str);

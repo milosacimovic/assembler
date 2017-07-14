@@ -8,6 +8,11 @@ using namespace std;
 
 static const char* output_file = NULL;
 
+void alloc_fail(){
+    write_to_log("Error: allocation failed.\n");
+    exit(2);
+}
+
 int is_log_file_set() {
     return output_file != NULL;
 }
@@ -62,15 +67,6 @@ void log_inst(const char* name, char** args, uint8_t num_args) {
     }
 }
 
-/*
-char* strdup(const char* str){
-    char* dup = (char*)malloc(sizeof(char)*(strlen(str) + 1));
-    if(dup){
-        strcpy(dup, str);
-    }
-    return dup;
-}
-*/
 char* to_lower(const char* str){
     char* cpy = strdup(str);
     int len = strlen(cpy);

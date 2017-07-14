@@ -1,0 +1,82 @@
+ORG 0x0
+.data
+DD sp
+
+DD 2 DUP ?
+
+DD fault
+
+DD timer
+
+DD keypress
+
+DD 36 DUP ?
+
+.text.0
+load R0 #0
+jz R0 x
+.text.1
+loadub R2 #'g'
+storeb R2 out_reg
+loadub R2 #'r'
+storeb R2 out_reg
+loadub R2 #'e'
+storeb R2 out_reg
+loadub R2 #'s'
+storeb R2 out_reg
+loadub R2 #'k'
+storeb R2 out_reg
+loadub R2 #'a'
+storeb R2 out_reg
+loadub R2 #'\n'
+storeb R2 out_reg
+int R0
+.text.2
+push R2
+loadub R2 #'p'
+storeb R2 out_reg
+loadub R2 #'r'
+storeb R2 out_reg
+loadub R2 #'i'
+storeb R2 out_reg
+loadub R2 #'t'
+storeb R2 out_reg
+loadub R2 #'i'
+storeb R2 out_reg
+loadub R2 #'s'
+storeb R2 out_reg
+loadub R2 #'n'
+storeb R2 out_reg
+loadub R2 #'u'
+storeb R2 out_reg
+loadub R2 #'t'
+storeb R2 out_reg
+loadub R2 #''
+storeb R2 out_reg
+loadub R2 in_reg
+storeb R2 out_reg
+loadub R2 #'\n'
+storeb R2 out_reg
+pop R2
+ret
+.text.3
+push R2
+loadub R2 #'t'
+storeb R2 out_reg
+loadub R2 #'i'
+storeb R2 out_reg
+loadub R2 #'m'
+storeb R2 out_reg
+loadub R2 #'e'
+storeb R2 out_reg
+loadub R2 #'r'
+storeb R2 out_reg
+loadub R2 #'\n'
+storeb R2 out_reg
+pop R2
+ret
+ret
+.bss
+DB 0x1000 DUP ?
+
+.end

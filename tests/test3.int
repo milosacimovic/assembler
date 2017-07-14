@@ -1,0 +1,14 @@
+ORG 0x0
+.data
+DD 42 DUP ?
+
+.text
+load R0 #A
+load R3 #26
+load R4 #1
+storeb R0 out_reg
+add R0 R0 R4
+sub R3 R3 R4
+jnz R3 $loop
+int R3
+.end

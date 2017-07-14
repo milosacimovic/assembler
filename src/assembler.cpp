@@ -2,10 +2,10 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "src/utils.h"
-#include "src/translate.h"
-#include "src/translate_utils.h"
-#include "src/tables.h"
+#include "utils.h"
+#include "translate.h"
+#include "translate_utils.h"
+#include "tables.h"
 
 #include "assembler.h"
 
@@ -18,31 +18,7 @@ const int NUM_BUCKETS = 54;
 using namespace std;
 
 
-
-/* First pass of the assembler.
-
-   This function should read each line, strip all comments, scan for labels,
-   and pass instructions to write_pass_one(). The input file may or may not
-   be valid. Here are some guidelines:
-
-    1. Only one label may be present per line. It must be the first token present.
-        Once you see a label, regardless of whether it is a valid label or invalid
-        label, treat the NEXT token as the beginning of an instruction.
-    2. If the first token is not a label, treat it as the name of an instruction.
-    3. Everything after the instruction name should be treated as arguments to
-        that instruction. If there are more than MAX_ARGS arguments, call
-        raise_extra_arg_error() and pass in the first extra argument. Do not 
-        write that instruction to the output file (eg. don't call write_pass_one())
-    4. Only one instruction should be present per line. You do not need to do 
-        anything extra to detect this - it should be handled by guideline 3. 
-    5. A line containing only a label is valid. The address of the label should
-        be the byte offset of the next instruction, regardless of whether there
-        is a next instruction or not.
-
-   Just like in pass_two(), if the function encounters an error it should NOT
-   exit, but process the entire file and return -1. If no errors were encountered, 
-   it should return 0.*/
-bool pass_one(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl){
+bool pass_one(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl, TNSymbol** TNS){
     char buffer[BUF_SIZE];
     char* buf;
     uint32_t location_counter = 0;
@@ -64,37 +40,40 @@ bool pass_one(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl){
             line++;
             continue;
         }
-        
+
         int ret = add_if_label(line, cur, location_counter, symtbl);
-        // if the first token is a label or an invalid label then 
+        // if the first token is a label or an invalid label then
         // check if the next token
         // is a directive or a mnemonic and take appropriate action
         // if the first token is not a label then check if the
         // current token is a directive or a mnemonic
         if(ret == 0 || ret == 1){
             cur = strtok(NULL, IGNORE_CHARS);
+			if (cur == NULL) {
+				line++;
+				continue;
+			}
         }
         char* name = to_lower(cur);
         if(is_directive(name)){
 
             if(strcmp(name, ".end") == 0){
-                symtbl[NUM_BUCKETS - 1][symtbl[NUM_BUCKETS- 1].size() - 1]->sec_size = location_counter - symtbl[NUM_BUCKETS - 1][symtbl[NUM_BUCKETS - 1].size() - 1]->addr;
+                symtbl[NUM_BUCKETS - 1][symtbl[NUM_BUCKETS- 1].size() - 1]->sec_size = location_counter;
                 fprintf(output, "%s", name);
                 return error;
             }
-            translate_directive_pass_one(name, buf, output, symtbl, location_counter, prev_name);           
-            
+            translate_directive_pass_one(name, buf, output, symtbl, location_counter);
+
         }else{//it is an instruction mnemonic or a def directive
             cur = strtok(NULL, IGNORE_CHARS);
             char *def = cur;
-            if(strcmp(def, "def") == 0|| strcmp(def, "DEF") == 0){
-                def_directive(buf, symtbl);
-                line++;
-                continue;
-            }
-            //Should I check the arguments for label usage ???????????
-            //add a label as extern if it is not in symbol table
-            //if it is then nothing
+			if (cur != NULL) {
+				if (strcmp(def, "def") == 0 || strcmp(def, "DEF") == 0) {
+					def_directive(buf, symtbl, TNS);
+					line++;
+					continue;
+				}
+			}
             while(cur != NULL){
                 args[num_args++] = cur;
                 remove_spaces(args[num_args-1]);
@@ -102,20 +81,24 @@ bool pass_one(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl){
                 if(num_args > MAX_ARGS) {
                     error = true;
                     write = true;
-                    extra_arg_error(line, cur);
+					if (cur != NULL) {
+						extra_arg_error(line, cur);
+
+					}
+					else {
+						extra_arg_error(line, args[num_args - 1]);
+
+					}
                     break;
                 }
             }
-            write_pass_one(output, name, args, num_args);
+
             if(!write){
-                location_counter_update(args, num_args, location_counter);   
+				write_pass_one(output, name, args, num_args);
+                location_counter_update(args, num_args, location_counter);
             }
-            
+
         }
-        if(prev_name != NULL){
-            free(prev_name);
-        }
-        prev_name = strdup(name);
 		free(name);
         line++;
     }
@@ -123,15 +106,15 @@ bool pass_one(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl){
     fprintf(output, ".end");
     return error;
 }
-/* Reads an intermediate file and translates it into machine code. You may assume:
+/* Reads an intermediate file and translates it into machine code. Some assumptions:
     1. The input file contains NO comments
     2. The input file contains NO labels
     3. The input file contains at maximum one instruction per line
-    4. All instructions have at maximum MAX_ARGS arguments
-    5. The symbol table has been filled out already
+    4. All instructions have maximum MAX_ARGS arguments
+    5. The symbol table has been filled out
 
-   If an error is reached, DO NOT EXIT the function. Keep translating the rest of
-   the document, and at the end, return -1. Return 0 if no errors were encountered. */
+   If an error is reached, NO EXIT the function. Keep translating the rest of
+   the document, and at the end, return -1. Return 0 if no errors. */
 int pass_two(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl, vector<RelTable*>& reltbls){
     char buffer[BUF_SIZE];//line buffer
     char* buf;
@@ -140,9 +123,14 @@ int pass_two(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl, vector<
     uint32_t location_counter = 0;
     int rel_ind = -1;//index in relocation tables array
     char* args[MAX_ARGS];//args array
+	char* prev_name = NULL;
     while(fgets(buffer, BUF_SIZE, input) != NULL){
         buf = strdup(buffer);
         char * cur = strtok(buffer, IGNORE_CHARS);
+		if (cur == NULL) {
+			line++;
+			continue;
+		}
 		char* mnemonic = to_lower(cur);
         if(is_directive(mnemonic)){
             if(strcmp(mnemonic, ".end") == 0){
@@ -155,7 +143,7 @@ int pass_two(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl, vector<
                     it is most convenient to pass it an index
                     to relocation tables array
                 */
-                translate_directive_pass_two(mnemonic, buf, symtbl, reltbls, location_counter, rel_ind);
+                translate_directive_pass_two(mnemonic, buf, symtbl, reltbls, location_counter, rel_ind, prev_name);
             }
 
         }else{
@@ -165,13 +153,18 @@ int pass_two(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl, vector<
                 args[num_args++] = cur;
                 cur = strtok(NULL, IGNORE_CHARS);
             }
-            
+
             int ret = translate_inst(mnemonic, args, num_args, symtbl, reltbls, rel_ind, location_counter);
             if(ret){
                 inst_error(line+1, mnemonic, args, num_args);
                 error = 1;
             }
         }
+		if (prev_name != NULL) {
+			free(prev_name);
+		}
+		prev_name = strdup(mnemonic);
+		free(mnemonic);
         line++;
     }
 
@@ -183,12 +176,12 @@ int pass_two(FILE* input, FILE* output, vector<vector<Symbol*>>& symtbl, vector<
 }
 
 static int open_files(FILE** input, FILE** output, const char* in_name, const char* out_name){
-    
-    fopen_s(input, in_name, "r");
-    fopen_s(output, out_name, "w");
+
+    *input = fopen(in_name, "r");
+    *output = fopen(out_name, "w");
 
     if(*input == NULL){
-        write_to_log("Error: upon opening file %s\n", input);
+        write_to_log("Error: upon opening file %s\n", in_name);
         return -1;
     }
     if(*output == NULL){
@@ -210,41 +203,42 @@ int assemble(const char* input, const char* tmp, const char* out){
     FILE* out_file_handle;
     vector<vector<Symbol*>> symtbl(NUM_BUCKETS);
     vector<RelTable*> reltbls;
-    
-    if(input){
-        if(open_files(&in_file_handle, &inter_file_handle, input, tmp) != 0){
-            free_table(symtbl);
-            exit(1);
-        }
+	TNSymbol* TNS = NULL;
 
-        if(pass_one(in_file_handle, inter_file_handle, symtbl)){
-            err = 1;
-        }
-        create_rel_tables(reltbls, symtbl);
-        close_files(in_file_handle, inter_file_handle);
+    if(open_files(&in_file_handle, &inter_file_handle, input, tmp) != 0){
+        free_table(symtbl);
+        exit(1);
     }
-    if(out){
-        if(open_files(&inter_file_handle, &out_file_handle, tmp, out) != 0){
-            free_table(symtbl);
-            free_rel_tables(reltbls);
-            exit(1);
-        }
-        assign_ranks(symtbl);
-        //leave the checking if there are any undefined symbols
-        //to the emulator
-        if(pass_two(inter_file_handle, out_file_handle, symtbl, reltbls) != 0){
-            err = 2;
-        }
-        
-        write_table(symtbl, out_file_handle);
-        
-        //reltbl now has relocation tables and contents of corresponding sections
-        write_out(out_file_handle, symtbl, reltbls);
-        
-        
-        fprintf(out_file_handle, "#end");
-        close_files(inter_file_handle, out_file_handle);
+
+    if(pass_one(in_file_handle, inter_file_handle, symtbl, &TNS)){
+        err = 1;
     }
+    create_rel_tables(reltbls, symtbl);
+    close_files(in_file_handle, inter_file_handle);
+
+    if(open_files(&inter_file_handle, &out_file_handle, tmp, out) != 0){
+        free_table(symtbl);
+        free_rel_tables(reltbls);
+        exit(1);
+    }
+	resolve_TNS(&TNS, symtbl);
+
+    assign_ranks(symtbl);
+    //leave the checking if there are any undefined symbols
+    //to the emulator
+    if(pass_two(inter_file_handle, out_file_handle, symtbl, reltbls) != 0){
+        err = 2;
+    }
+
+    write_table(symtbl, out_file_handle);
+
+    //reltbl now has relocation tables and contents of corresponding sections
+    write_out(out_file_handle, symtbl, reltbls);
+
+
+    fprintf(out_file_handle, "#end");
+    close_files(inter_file_handle, out_file_handle);
+
 
     free_table(symtbl);
     free_rel_tables(reltbls);
@@ -260,7 +254,7 @@ void print_usage(){
 }
 
 int main(int argc, char* argv[]){
-        
+
     if(argc < 2 || argc == 3 || argc >=5){
         print_usage();
         exit(1);

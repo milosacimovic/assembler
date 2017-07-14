@@ -1,0 +1,8 @@
+.text
+load R0 #3
+push R0
+call sub
+pop R13
+load R0 #0
+int R0
+.end

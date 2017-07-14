@@ -1,0 +1,9 @@
+.text
+or R0 R1 R2
+jz R0
+sub R1 R1 R1
+l2:
+add R17 R2 R3
+store R1 #0x123
+load R1 0x8000080800080
+.end

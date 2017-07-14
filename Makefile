@@ -4,7 +4,7 @@ ASSEMBLER_FILES = src/utils.cpp src/tables.cpp src/translate_utils.cpp src/trans
 OBJ_FILES = src/utils.o src/tables.o src/translate_utils.o src/translate.o
 
 all:
-	$(CC) $(CFLAGS) -o assembler assembler.cpp $(ASSEMBLER_FILES)
+	$(CC) $(CFLAGS) -o bin/assembler src/assembler.cpp $(ASSEMBLER_FILES)
 
 src/%.o: $(ASSEMBLER_FILES) clean
 	$(CC) -o $@ -c $< $(CFLAGS)

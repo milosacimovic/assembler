@@ -22,6 +22,7 @@ typedef struct Symbol{
     uint32_t sec_size;
     std::vector<char> flags; /*sec flags W- writeable A - allocatable X - executable P - present */
     Symbol(char* n, uint32_t address): num(0), name(n), sec_num(0), addr(address), flag('L'), sec_size(0), flags(0){}
+	Symbol(char* n, uint32_t address, int32_t sec_num): num(0), name(n), sec_num(-1), addr(address), flag('C'), sec_size(0), flags(0) {}
 } Symbol;
 
 /* Signature of the RelTable data structure. */
@@ -47,6 +48,13 @@ typedef struct RelTable{
     RelTable():ind(0), section_content(NULL), tbl(0){}
 }RelTable;
 
+typedef struct TNSymbol {
+	struct TNSymbol* next;
+	char* def_sym;
+	char* expr;
+	TNSymbol(char* n, char* ex) : def_sym(n), expr(ex), next(NULL){}
+}TNSymbol;
+
 int char_to_ind(char c);
 
 int add_to_table(std::vector<std::vector<Symbol*>>& symtbl, const char* name, uint32_t addr, Symbol** sym);
@@ -54,6 +62,8 @@ int add_to_table(std::vector<std::vector<Symbol*>>& symtbl, const char* name, ui
 uint32_t get_symbol_addr(std::vector<std::vector<Symbol*>>& symtbl, const char* name);
 
 Symbol* get_symbol(std::vector<std::vector<Symbol*>>& symtbl, const char* name);
+
+Symbol* get_symbol(std::vector<std::vector<Symbol*>>& symtbl, uint32_t num);
 
 void free_table(std::vector<std::vector<Symbol*>>& symtbl);
 
@@ -66,5 +76,9 @@ void add_rel_symbol(RelTable& table, uint32_t addr, char type, uint32_t sym_num)
 void free_rel_tables(std::vector<RelTable*>& rels);
 
 void write_out(FILE* out, std::vector<std::vector<Symbol*>>& symtbl, std::vector<RelTable*>& rels);
+
+TNSymbol* create_TNSymbol(char* name, char* expr);
+
+void add_TNS(TNSymbol** tns, TNSymbol* ins);
 
 #endif

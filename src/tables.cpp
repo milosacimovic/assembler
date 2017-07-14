@@ -8,11 +8,6 @@
 using namespace std;
 
 
-void alloc_fail(){
-    write_to_log("Error: allocation failed.\n");
-    exit(2);
-}
-
 int char_to_ind(char c){
     if(c >= 'a' && c <= 'z'){
         return c - 'a';
@@ -103,13 +98,23 @@ Symbol* get_symbol(vector<vector<Symbol*>>& symtbl, const char* name){
     }
     return NULL;
 }
+
+Symbol* get_symbol(std::vector<std::vector<Symbol*>>& symtbl, uint32_t num){
+    for(int i = 0; i < NUM_BUCKETS; i++){
+        for(int j = 0; j < symtbl[i].size(); j++){
+            if(symtbl[i][j]->num == num){
+                return symtbl[i][j];
+            }
+        }
+    }
+}
+
 /* Writes the SymbolTable @tbl to OUTPUT. Ranks of symbols have been
     assigned before pass_two!!!
  */
 void write_table(vector<vector<Symbol*>>& symtbl, FILE* file){
 
     fprintf(file, "#TabelaSimbola\n");
-    fprintf(file, "0 UND -2 0x%08x L\n", 0);
     int num_sections = symtbl[NUM_BUCKETS-1].size();
     for(int i =0; i < num_sections; i++){
         Symbol * current = symtbl[NUM_BUCKETS - 1][i];
@@ -133,11 +138,12 @@ void create_rel_tables(vector<RelTable*>& rels, vector<vector<Symbol*>>& symtbl)
     int secs = NUM_BUCKETS - 1;
     for(int i = 0; i < num_sec; i++){
         RelTable* t;
-        if(char_vector_contains(symtbl[secs][num_sec -1]->flags, 'P')){
-            t = new (nothrow)RelTable();
-            if(t == NULL){
-                alloc_fail();
-            }
+		t = new (nothrow)RelTable();
+		if (t == NULL) {
+			alloc_fail();
+		}
+        if(char_vector_contains(symtbl[secs][i]->flags, 'P')){
+            
             t->section_content = new uint8_t[symtbl[secs][i]->sec_size];
             if(t->section_content == NULL){
                 alloc_fail();
@@ -165,7 +171,10 @@ void free_rel_tables(vector<RelTable*>& rels){
             delete sym;
         }
         t->tbl.clear();
-        delete[] t->section_content;
+		if (t->section_content != NULL) {
+			delete[] t->section_content;
+		}
+		delete t;
     }
 }
 
@@ -199,13 +208,32 @@ void write_out(FILE* out, vector<vector<Symbol*>>& symtbl, vector<RelTable*>& re
             for(int j = 1; j <= sym->sec_size; j++){
                 
                 fprintf(out, "%02x", rel_table->section_content[j-1]);
-                if(j % 16 == 0){
+                if(j % 16 == 0 && j != sym->sec_size){
                     fprintf(out,"\n");
                 }else{
                     fprintf(out," ");
                 }
             }
+			fprintf(out, "\n");
         }//end_if
-		fprintf(out, "\n");
+		
     }//end_for
+}
+
+TNSymbol* create_TNSymbol(char* name, char* expr) {
+	TNSymbol* in = new (nothrow)TNSymbol(name, expr);
+	if (in == NULL) {
+		alloc_fail();
+	}
+	return in;
+}
+
+void add_TNS(TNSymbol** tns, TNSymbol* ins) {
+	if (*tns == NULL) {
+		*tns = ins;
+	}
+	else {
+		ins->next = *tns;
+		*tns = ins;
+	}
 }

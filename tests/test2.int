@@ -1,0 +1,60 @@
+ORG 0x0
+.data
+DD sp
+
+DD 2 DUP ?
+
+DD fault
+
+DD timer
+
+DD keypress
+
+DD 36 DUP ?
+
+.text.0
+loadub R0 #'1'
+load R4 #10
+push R4
+push R0
+call sub
+pop R10
+pop R10
+jz R3 $l
+.text.1
+load R0 #0
+int R0
+.text.2
+ret
+.text.3
+push R2
+loadub R2 #'t'
+storeb R2 out_reg
+loadub R2 #'i'
+storeb R2 out_reg
+loadub R2 #'m'
+storeb R2 out_reg
+loadub R2 #'e'
+storeb R2 out_reg
+loadub R2 #'r'
+storeb R2 out_reg
+loadub R2 #'\n'
+storeb R2 out_reg
+pop R2
+ret
+.text.4
+push R13
+load R13 SP
+load R3 #1
+load R0 [R13-11]
+load R1 [R13-15]
+storeb R0 out_reg
+add R0 R0 R3
+sub R1 R1 R3
+jnz R1 loop
+pop R13
+ret
+.bss
+DB 0x1000 DUP ?
+
+.end

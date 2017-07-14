@@ -19,4 +19,7 @@ char* to_lower(const char* str);
 bool str_contains(const char* str, char c);
 
 bool char_vector_contains(std::vector<char>& str, char c);
+
+void alloc_fail();
+
 #endif

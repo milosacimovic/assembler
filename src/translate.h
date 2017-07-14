@@ -14,11 +14,11 @@ extern const int NUM_BUCKETS;
 
 void write_pass_one(FILE* output, const char* name, char** args, uint8_t num_args);
 
-void def_directive(char* buf, std::vector<std::vector<Symbol*>>& symtbl);
+void def_directive(char* buf, std::vector<std::vector<Symbol*>>& symtbl, TNSymbol** TNS);
 
-void translate_directive_pass_one(const char* name, char* buf, FILE* output, std::vector<std::vector<Symbol*>>& symtbl,uint32_t& location_counter, const char* prev_name);
+void translate_directive_pass_one(const char* name, char* buf, FILE* output, std::vector<std::vector<Symbol*>>& symtbl,uint32_t& location_counter);
 
-void translate_directive_pass_two(const char* name, char* buf, std::vector<std::vector<Symbol*>>& symtbl, std::vector<RelTable*>& reltbls, uint32_t& location_counter, int& rel_ind);
+void translate_directive_pass_two(const char* name, char* buf, std::vector<std::vector<Symbol*>>& symtbl, std::vector<RelTable*>& reltbls, uint32_t& location_counter, int& rel_ind, char* prev_name);
 
 void location_counter_update(char** args, int num_args, uint32_t& location_counter);
 
@@ -47,5 +47,7 @@ int trans_cond_branch(uint8_t opcode, char** args, int num_args, std::vector<std
 int trans_load(uint8_t opcode,const char* name, char** args, int num_args, std::vector<std::vector<Symbol*>>& symtbl, std::vector<RelTable*>& reltbls, int rel_ind, uint32_t& location_counter);
 
 int trans_store(uint8_t opcode,const char* name, char** args, int num_args, std::vector<std::vector<Symbol*>>& symtbl, std::vector<RelTable*>& reltbls, int rel_ind, uint32_t& location_counter);
+
+void resolve_TNS(TNSymbol** tns, std::vector<std::vector<Symbol*>>& symtbl);
 #endif
 

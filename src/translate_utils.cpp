@@ -83,6 +83,7 @@ bool is_pass_two_directive(const char* dir){
         strcmp(str, ".data") == 0 ||
         strcmp(str, ".bss") == 0 ||
         strcmp(str, ".rodata") == 0 ||
+		strcmp(str, "org") == 0  ||
         strcmp(str, "db") == 0 ||
         strcmp(str, "dw") == 0 ||
         strcmp(str, "dd") == 0){
@@ -118,19 +119,68 @@ int32_t convert_to_num(const char* str){
                 case 'X':
                     res = (int32_t)strtol(str, NULL, 16);
                     break;
+				default:
+					res = 0;
             }
             break;
         case '\''://character
-            res = (int32_t)str[1];
+			if (str[1] == '\\') {
+				switch (str[2]) {
+				case 'a':
+					res = 0x7; //Alert(Beep, Bell) (added in C89)[1]
+					break;
+				case 'b':
+					res = 0x8;//Backspace
+					break;
+				case 'f':
+					res = 0xC;//Formfeed
+				case 'n':
+					res = 0xA; //Newline(Line Feed)
+					break;
+				case 'r':
+					res = 0xD;//Carriage Return
+					break;
+				case 't':
+					res = 0x9;//Horizontal Tab
+					break;
+				case 'v':
+					res = 0xB;//Vertical Tab
+				case '\\':
+					res = 0x5C;//Backslash
+					break;
+				case '\'':
+					//space??
+					res = 0x27;//Single quotation mark
+					break;
+				case '"':
+					res = 0x22;//Double quotation mark
+					break;
+				case '?':
+					res = 0x3F;//Question mark(used to avoid trigraphs)
+					break;
+				}
+			}
+			else {
+					if (str[1] == '\'') {
+						int len = strlen(str);
+						if (len == 2) {
+							res = (int32_t)' ';
+						}
+						else {
+							res = (int32_t)str[1];
+						}
+						
+					}
+					else {
+						res = (int32_t)str[1];
+					}
+			}
+			break;
         default:
             res = atoi(str);
             break;
     }
-    if(res == 0){
-        write_to_log("Error: unallowed characters in constant %s.", str);
-    }else{
-        return res;
-    }
+    return res;
 }
 
 int32_t bin_op(int32_t oper1, int32_t oper2, char op){
@@ -237,7 +287,7 @@ char* to_postfix(char* expr){
                 out[i++] = x;
                 rank = rank + R(x);
                 if(rank < 1){
-                    write_to_log("Error: expression %s is irregular.", expr);
+                    write_to_log("Error: expression %s is irregular.\n", expr);
                 }
             }
             if(next != ')'){
@@ -258,7 +308,7 @@ char* to_postfix(char* expr){
         rank = rank + R(x);
     }
     if(rank != 1){
-        write_to_log("Error: expression %s is irregular.", expr);
+        write_to_log("Error: expression %s is irregular.\n", expr);
     }
     return out;
 }
@@ -286,53 +336,9 @@ int32_t eval_postfix(char* expr, vector<int32_t> literals){
     if(s.empty()){
         return res;
     }else{
-        write_to_log("Error: expression %s is irregular.", expr);
+        write_to_log("Error: expression %s is irregular.\n", expr);
 		return 0;
     }
-}
-
-int32_t calculate_expression(char* expr){
-    vector<int32_t> literals;
-    char* out = strdup(expr);
-    int i = 0;//literal counter
-    int str_ind = 0;
-    bool cur_literal = false;
-    char* str = expr;
-    char literal[35];
-    int literal_ind = 0;
-    while(*str){
-        char c = *str;
-        if(str_contains("+-*/()",c)){
-            if(cur_literal){
-                cur_literal = false;
-                //exchange literal with a letter
-                char ins = ind_to_c(i++);
-                out[str_ind++] = ins;
-                literal[literal_ind] = '\0';
-                literals.push_back(convert_to_num(literal));
-            }
-            out[str_ind++] = c;
-        }else{
-            if(!cur_literal){
-                cur_literal = true;
-                literal_ind = 0;
-            }
-            literal[literal_ind++] = c;
-        }
-        str++;
-    }
-	if (cur_literal) {
-		cur_literal = false;
-		//exchange literal with a letter
-		char ins = ind_to_c(i++);
-		out[str_ind++] = ins;
-		literal[literal_ind] = '\0';
-		literals.push_back(convert_to_num(literal));
-	}
-	out[str_ind++] = '\0';
-    char* ex = to_postfix(out);
-    free(out);
-    return eval_postfix(ex, literals);
 }
 
 void assign_ranks(vector<vector<Symbol*>>& symtbl){
@@ -369,7 +375,7 @@ int translate_reg(const char* str) {
 }
 
 void write_hex_inst(uint32_t inst, RelTable* rel){
-    char str[9];   s
+    char str[9];   
     sprintf(str, "%08x", inst);
     uint8_t first = strtol(str+6,NULL,16);
     str[6] = '\0';
@@ -386,15 +392,15 @@ void write_hex_inst(uint32_t inst, RelTable* rel){
 }
 
 void name_already_exists(const char* name) {
-	write_to_log("Error: name %s already exists", name);
+	write_to_log("Error: name %s already exists.\n", name);
 }
 
 void invalid_label(uint32_t line, const char* label) {
-	write_to_log("Error: invalid label on line %u: %s", line, label);
+	write_to_log("Error: invalid label on line %u: %s\n", line, label);
 }
 
 void inst_error(uint32_t line, const char* name, char** args, uint8_t num_args) {
-	write_to_log("Error: on line %u:", line);
+	write_to_log("Error: on line %u:\n", line);
 	log_inst(name, args, num_args);
 }
 
@@ -408,7 +414,7 @@ void skip_comment(char* str) {
 
 
 void extra_arg_error(uint32_t line, const char* extra) {
-	write_to_log("Error: extra argument on line %u: %s", line, extra);
+	write_to_log("Error: extra argument on line %u: %s\n", line, extra);
 }
 
 /* If the @str:
@@ -431,16 +437,17 @@ int add_if_label(uint32_t line, char* str, uint32_t location_counter, vector<vec
 				}
 				else {
 					name_already_exists(str);//withing this section
-											 //name clashing
+										 //name clashing
 				}
 
 			}
 			else {
 				if (add_to_table(symtbl, str, location_counter, &out) == 0) {
 					out->sec_num = num_secs;
-					return 0;
+					
 				}
 			}
+			return 0;
 		}
 		else {
 			invalid_label(line, str);
